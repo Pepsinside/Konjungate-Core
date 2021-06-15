@@ -1992,7 +1992,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         int64_t nReward = GetProofOfWorkReward(pindex->nHeight, nFees);
 
         //Refund
-        if(pindexBest->nHeight >= nPaymentUpdate_4 && pindexBest->nHeight < nEndOfRefund) nReward += nBlockStandardRefund;
+        if(pindex->nHeight > nPaymentUpdate_4 && pindex->nHeight <= nEndOfRefund) nReward += nBlockStandardRefund;
 
         // Check coinbase reward
         if (vtx[0].GetValueOut() > nReward)
@@ -2011,7 +2011,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         int64_t nCalculatedStakeReward = GetProofOfStakeReward(pindex->pprev, nCoinAge, nFees);
 
         //Refund
-        if(pindexBest->nHeight >= nPaymentUpdate_4 && pindexBest->nHeight < nEndOfRefund) nCalculatedStakeReward += nBlockStandardRefund;
+        if(pindex->nHeight > nPaymentUpdate_4 && pindex->nHeight <= nEndOfRefund) nCalculatedStakeReward += nBlockStandardRefund;
 
         if (nStakeReward > nCalculatedStakeReward){
                 return DoS(100, error("ConnectBlock() : coinstake pays too much(actual=%d vs calculated=%d)", nStakeReward, nCalculatedStakeReward));
@@ -2019,7 +2019,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
     }
 
     // Check MN, devops and refund payments
-    if(pindexBest->nHeight >= nPaymentUpdate_4){
+    if(pindex->nHeight > nPaymentUpdate_4){
         CTransaction cRewardTx = IsProofOfStake() ? vtx[1] : vtx[0];
         bool containsMnPayment = false;
         bool containsDevopsPayment = false;
@@ -2030,7 +2030,7 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         {
             int nVoutSize = cRewardTx.vout.size();
             
-            if(pindexBest->nHeight < nEndOfRefund)
+            if(pindex->nHeight <= nEndOfRefund)
             {
                 if(nVoutSize < 5)
                     return error("ConnectBlock() : not enough outputs in coinstake tx (%d)", nVoutSize); 
@@ -2045,8 +2045,8 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
             if(nVoutSize < 4)
                     return error("ConnectBlock() : not enough outputs in coinstake tx (%d)", nVoutSize);           
 
-            if(cRewardTx.vout[nVoutSize-2].nValue == GetMasternodePayment(pindexBest->nHeight, 0)) containsMnPayment = true;
-            if(cRewardTx.vout[nVoutSize-1].nValue == GetDevOpsPayment(pindexBest->nHeight, 0)) containsDevopsPayment = true;
+            if(cRewardTx.vout[nVoutSize-2].nValue == GetMasternodePayment(pindex->nHeight-1, 0)) containsMnPayment = true;
+            if(cRewardTx.vout[nVoutSize-1].nValue == GetDevOpsPayment(pindex->nHeight-1, 0)) containsDevopsPayment = true;
         }
         else
         {
@@ -2054,8 +2054,8 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
             for (int i = 0; i < cRewardTx.vout.size(); i++)
             {
                 txOut = cRewardTx.vout[i];
-                if(txOut.nValue == GetMasternodePayment(pindexBest->nHeight, 0)) containsMnPayment = true;
-                if(txOut.nValue == GetDevOpsPayment(pindexBest->nHeight, 0)) containsDevopsPayment = true;
+                if(txOut.nValue == GetMasternodePayment(pindex->nHeight-1, 0)) containsMnPayment = true;
+                if(txOut.nValue == GetDevOpsPayment(pindex->nHeight-1, 0)) containsDevopsPayment = true;
                 if(txOut.nValue == nBlockStandardRefund){
                     containsRefundPayment = true;
                     nRefundIndex = i;
@@ -2069,14 +2069,14 @@ bool CBlock::ConnectBlock(CTxDB& txdb, CBlockIndex* pindex, bool fJustCheck)
         if(!containsDevopsPayment)
             return error("ConnectBlock() : devops payment missing or incorrect");
 
-        if(pindexBest->nHeight < nEndOfRefund) 
+        if(pindex->nHeight <= nEndOfRefund) 
         {
             if(!containsRefundPayment)
                 return error("ConnectBlock() : refund payment missing or incorrect");
             
             if(!IsInitialBlockDownload())
             {
-                int nHeightRefund = pindex->pprev->nHeight+1 - nNbrWrongBlocks;
+                int nHeightRefund = pindex->nHeight - nNbrWrongBlocks;
                 CBlock blockRefund;
                 CBlockIndex* pBlockIndexRefund;
                 uint256 hash;
